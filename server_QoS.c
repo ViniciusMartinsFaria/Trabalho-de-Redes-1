@@ -1,6 +1,13 @@
 /* server_qos.c
+
+ * Integrantes:
+ *  Vinícius Martins Faria
+ *  Tiago Campos de Andrade
+ *  Douglas da Silva Marques
  *
  * Servidor HTTP/1.1 concorrente (pthreads) com QoS por IP.
+ * Este código foi construído apartir do código base disponível em:
+ *  https://www.ibm.com/docs/en/zos/3.1.0?topic=applications-example-ipv4-tcp-server-program
  *
  * Uso:
  *   ./server_qos [porta] [arquivo_clientes] [max_kbps]
@@ -173,11 +180,8 @@ int send_file_rate_limited(int sock, int fd, off_t filesize, int kbps_per_conn) 
             total_written += w;
         }
         sent += r;
-        /* calcular sleep para respeitar bytes_per_sec */
         double secs = (double)r / bytes_per_sec;
-        /* converter para micros e dormir */
         if (secs > 0) {
-            /* limitar sleeping mínimo para evitar overhead muito alto */
             long usec = (long)(secs * 1e6);
             if (usec > 0) usleep(usec);
         }
@@ -325,22 +329,18 @@ void *handle_client(void *arg) {
     /* obter ip_entry e incrementar active_connections (admitir) */
     ip_entry_t *entry = get_or_create_ip_entry(addrbuf);
 
-    /* Admissão simples: verificar soma das taxas configuradas não excede server_max_kbps.
-       Observação: o enunciado pede que novas conexões sejam rejeitadas se excederem vazão total.
-       Aqui fazemos verificação conservadora: se total_configured_kbps() > server_max_kbps => rejeita.
-       (Uma implementação mais sofisticada deveria levar em conta conexões ativas reais e divisão de taxa).
-    */
-    pthread_mutex_lock(&ip_list_mutex);
+    /* Admissão simples: verificar soma das taxas configuradas não excede server_max_kbps.*/
     int total_kbps = total_configured_kbps();
     if (total_kbps > server_max_kbps) {
-        pthread_mutex_unlock(&ip_list_mutex);
         /* envia 503 e fecha */
         send_simple_response(clientSock, 503, "Service Unavailable", "Server at capacity\n");
         close(clientSock);
         printf("Conexão de %s rejeitada por capacidade.\n", addrbuf);
         return NULL;
     }
-    /* contamos a conexão ativa */
+
+    /* agora incrementa contador de conexões ativas sob lock */
+    pthread_mutex_lock(&ip_list_mutex);
     entry->active_connections++;
     pthread_mutex_unlock(&ip_list_mutex);
 
