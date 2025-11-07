@@ -138,7 +138,7 @@ void load_clients_file(const char *path) {
     fclose(f);
 }
 
-/* calcula total de kbps configurados (soma por IP configurado) */
+/* calcula total de kbps configurados (por IP) */
 int total_configured_kbps() {
     int total = 0;
     pthread_mutex_lock(&ip_list_mutex);
@@ -151,10 +151,7 @@ int total_configured_kbps() {
     return total;
 }
 
-/* função para enviar arquivo com taxa limitada (kbps). 
- * kbps_to_use é a taxa total disponível para este IP; se há N conexões ativas
- * a função deve dividir entre elas antes de chamar (faça kbps_per_connection).
- */
+/* função para enviar arquivo com taxa limitada (kbps). */
 int send_file_rate_limited(int sock, int fd, off_t filesize, int kbps_per_conn) {
     /* bytes por segundo */
     double bytes_per_sec = (kbps_per_conn * 1000.0) / 8.0;
@@ -189,7 +186,7 @@ int send_file_rate_limited(int sock, int fd, off_t filesize, int kbps_per_conn) 
     return 0;
 }
 
-/* envia arquivo sem limitação (método direto) */
+/* envia arquivo sem limitação (html) */
 int send_file_unlimited(int sock, int fd, off_t filesize) {
     const size_t chunk = 4096;
     char buffer[chunk];
@@ -216,7 +213,7 @@ int send_file_unlimited(int sock, int fd, off_t filesize) {
     return 0;
 }
 
-/* retorna extensão em minúsculas */
+/* retorna extensão em minúsculas(tratamento) */
 void get_lower_ext(const char *path, char *ext_out, size_t ext_len) {
     ext_out[0] = '\0';
     const char *p = strrchr(path, '.');
@@ -228,7 +225,7 @@ void get_lower_ext(const char *path, char *ext_out, size_t ext_len) {
     }
 }
 
-/* simples map de content-type por extensão */
+/* mapeamento de arquivo por formato descrito na extenssão */
 const char *guess_content_type(const char *path) {
     char ext[32];
     get_lower_ext(path, ext, sizeof(ext));
@@ -243,24 +240,22 @@ const char *guess_content_type(const char *path) {
     return "application/octet-stream";
 }
 
-/* sanitiza path e retorna caminho real dentro ./www, evitando ../ */
 int build_safe_path(const char *uri, char *out_path, size_t out_len) {
     char rel[1024];
     if (strcmp(uri, "/") == 0 || strlen(uri) == 0) {
         snprintf(rel, sizeof(rel), "www/index.html");
     } else {
-        /* remove leading '/' */
+        
         if (uri[0] == '/') snprintf(rel, sizeof(rel), "www/%s", uri+1);
         else snprintf(rel, sizeof(rel), "www/%s", uri);
     }
-    /* simplista: rejeita .. ocorrências */
+    
     if (strstr(rel, "..") != NULL) return -1;
-    /* opcional: realpath para garantir */
+    
     char realbuf[PATH_MAX];
     if (realpath(rel, realbuf) == NULL) {
         return -1;
     }
-    /* garantir que o realpath começa com o cwd + /www */
     char cwd[PATH_MAX];
     if (!getcwd(cwd, sizeof(cwd))) return -1;
     char wwwroot[PATH_MAX];
@@ -273,7 +268,7 @@ int build_safe_path(const char *uri, char *out_path, size_t out_len) {
     return 0;
 }
 
-/* parse simples da request: extrai método e uri */
+/* extrai método e uri */
 void parse_request_line(const char *req, char *method, size_t mlen, char *uri, size_t ulen) {
     method[0] = '\0';
     uri[0] = '\0';
@@ -287,9 +282,9 @@ void parse_request_line(const char *req, char *method, size_t mlen, char *uri, s
     sscanf(line, "%s %s", method, uri);
 }
 
-/* busca header especifico na requisição (case-insensitive) */
+/* busca header especifico na requisição */
 int header_contains(const char *req, const char *header) {
-    /* procura header seguido de ":" */
+    /* procura header */
     const char *p = strcasestr(req, header);
     if (!p) return 0;
     const char *colon = strchr(p, ':');
@@ -297,7 +292,7 @@ int header_contains(const char *req, const char *header) {
     return 1;
 }
 
-/* envia resposta simples de erro */
+/* envia resposta de erro */
 void send_simple_response(int clientSock, int code, const char *reason, const char *body) {
     char header[1024];
     int content_len = body ? strlen(body) : 0;
@@ -312,7 +307,7 @@ void send_simple_response(int clientSock, int code, const char *reason, const ch
     if (content_len > 0) send(clientSock, body, content_len, 0);
 }
 
-/* função que processa EACH connection (thread) */
+/* função que processa cada conexão (thread) */
 void *handle_client(void *arg) {
     int clientSock = *(int *)arg;
     free(arg);
@@ -326,7 +321,7 @@ void *handle_client(void *arg) {
     }
     printf("Nova thread: cliente %s\n", addrbuf);
 
-    /* obter ip_entry e incrementar active_connections (admitir) */
+    /* admitir */
     ip_entry_t *entry = get_or_create_ip_entry(addrbuf);
 
     /* Admissão simples: verificar soma das taxas configuradas não excede server_max_kbps.*/
@@ -348,7 +343,7 @@ void *handle_client(void *arg) {
     ssize_t bytesRead;
     /* loop para conexões persistentes (HTTP/1.1 keep-alive por padrão) */
     while (1) {
-        /* receber cabeçalho (simplista): ler até encontrar \r\n\r\n ou timeout */
+        /* receber cabeçalho ler até encontrar \r\n\r\n ou timeout */
         bytesRead = recv(clientSock, buffer, BUFFER_SIZE, 0);
         if (bytesRead <= 0) break;
         buffer[bytesRead] = '\0';
@@ -362,7 +357,7 @@ void *handle_client(void *arg) {
             break;
         }
 
-        /* atualizar estimativa RTT simples: diferença entre agora e last_request_time */
+        /* atualizar estimativa RTT simples*/
         struct timeval now;
         gettimeofday(&now, NULL);
         pthread_mutex_lock(&ip_list_mutex);
@@ -391,7 +386,7 @@ void *handle_client(void *arg) {
             else continue;
         }
 
-        /* open file e obter tamanho */
+        /* Abre arquivo e obtém tamanho */
         int fd = open(safe_path, O_RDONLY);
         if (fd < 0) {
             send_simple_response(clientSock, 404, "Not Found", "File not found\n");
@@ -407,10 +402,10 @@ void *handle_client(void *arg) {
         }
         off_t filesize = st.st_size;
 
-        /* decidir content-type */
+        /* tipo de conteúdo */
         const char *ctype = guess_content_type(safe_path);
 
-        /* construir e enviar header HTTP */
+        /* constroi e envia header HTTP */
         char header[1024];
         int header_len = snprintf(header, sizeof(header),
             "HTTP/1.1 200 OK\r\n"
@@ -422,14 +417,13 @@ void *handle_client(void *arg) {
             header_contains(buffer, "Connection: close") ? "close" : "keep-alive");
         send(clientSock, header, header_len, 0);
 
-        /* se method == HEAD, não envia o body */
         if (strcmp(method, "HEAD") == 0) {
             close(fd);
             if (header_contains(buffer, "Connection: close")) break;
             else continue;
         }
 
-        /* se é HTML -> enviar sem limitação */
+        /* se é HTML enviar sem limitação */
         char ext[32];
         get_lower_ext(safe_path, ext, sizeof(ext));
         int is_html = (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0);
@@ -441,10 +435,9 @@ void *handle_client(void *arg) {
         pthread_mutex_unlock(&ip_list_mutex);
 
         if (is_html) {
-            /* enviar sem rate limiting */
             send_file_unlimited(clientSock, fd, filesize);
         } else {
-            /* aplica QoS: divide configured_kbps por active_conns */
+            /* aplica QoS*/
             int kbps_per_conn = configured_kbps / active_conns;
             if (kbps_per_conn <= 0) kbps_per_conn = 1;
             send_file_rate_limited(clientSock, fd, filesize, kbps_per_conn);
@@ -452,12 +445,12 @@ void *handle_client(void *arg) {
 
         close(fd);
 
-        /* se header Connection: close -> fecha */
+        /* se header Connection fecha */
         if (header_contains(buffer, "Connection: close")) break;
         /* caso contrário, continua esperando próxima requisição na mesma conexão */
     }
 
-    /* conexão encerrada: decrementar contador de conexões ativas */
+    /* conexão encerrada*/
     pthread_mutex_lock(&ip_list_mutex);
     if (entry->active_connections > 0) entry->active_connections--;
     pthread_mutex_unlock(&ip_list_mutex);
