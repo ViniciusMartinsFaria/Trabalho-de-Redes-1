@@ -37,9 +37,9 @@ e aplica controle de taxa (QoS) por IP de acordo com o arquivo clients.txt.
 Conteúdo .html é servido sem limitação de taxa.
 
 Para testar:
-    Abra um navegador e acesse http://localhost:8080/
+    Abra um navegador e acesse http://localhost:porta_inicializada/
 ou
-    Use o comando: curl http://localhost:8080/
+    Use o comando: curl http://localhost:porta_inicializada/
 
 Encerrar o servidor:
     Ctrl + C
@@ -50,3 +50,4 @@ Encerrar o servidor:
 
 Este projeto foi desenvolvido integralmente pela equipe,
 sem ajuda não autorizada de alunos não membros do projeto no processo de codificação.
+
